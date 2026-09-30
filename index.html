@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overfishing & Marine Protected Area Simulation</title>
+<style>
+  :root {
+    --ink:#16323f;
+    --muted:#55717d;
+    --panel:#ffffff;
+    --line:#d7e4e8;
+    --water:#dff5fa;
+    --water2:#bfe8f0;
+    --accent:#0b7285;
+    --accent2:#087f5b;
+    --danger:#c92a2a;
+    --gold:#e67700;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color:var(--ink);
+    background:linear-gradient(#f4fbfd,#eef7f8);
+  }
+  .app { max-width:1200px; margin:0 auto; padding:18px; }
+  h1 { margin:0 0 5px; font-size:clamp(1.45rem,3vw,2.15rem); }
+  .subtitle { margin:0 0 16px; color:var(--muted); line-height:1.45; }
+  .grid { display:grid; grid-template-columns:320px 1fr; gap:16px; }
+  .panel {
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    box-shadow:0 8px 28px rgba(18,57,68,.08);
+    padding:16px;
+  }
+  .controls h2, .results h2 { font-size:1rem; margin:0 0 13px; }
+  .control { margin:0 0 17px; }
+  label {
+    display:flex; justify-content:space-between; gap:12px;
+    font-weight:700; font-size:.92rem; margin-bottom:7px;
+  }
+  .value { color:var(--accent); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .hint { font-size:.77rem; color:var(--muted); margin-top:5px; line-height:1.35; }
+  .button-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  button {
+    border:0; border-radius:10px; padding:10px 12px;
+    font-weight:800; cursor:pointer; background:#e7f2f4; color:var(--ink);
+  }
+  button:hover { filter:brightness(.97); transform:translateY(-1px); }
+  button.primary { background:var(--accent); color:white; }
+  button.green { background:var(--accent2); color:white; }
+  button.warn { background:#fff0e0; color:#9a4d00; }
+  button.reset { background:#edf0f1; }
+  .mpa-status {
+    border-radius:12px; padding:10px 12px; margin-bottom:12px;
+    font-size:.88rem; line-height:1.4; background:#f1f8f6;
+    border:1px solid #cde9df;
+  }
+  .mpa-status.off { background:#f7f7f7; border-color:#e3e3e3; }
+  .stats {
+    display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:12px;
+  }
+  .stat {
+    border:1px solid var(--line); border-radius:12px; padding:11px;
+    background:#fbfeff; min-width:0;
+  }
+  .stat .k { color:var(--muted); font-size:.72rem; font-weight:700; }
+  .stat .v { font-size:1.35rem; font-weight:900; margin-top:3px; }
+  .stat .s { color:var(--muted); font-size:.68rem; margin-top:2px; }
+  .reef {
+    position:relative; overflow:hidden; height:500px; min-height:360px;
+    border-radius:15px; border:1px solid #7fbcca;
+    background:
+      radial-gradient(circle at 20% 18%,rgba(255,255,255,.75) 0 2px,transparent 3px),
+      radial-gradient(circle at 73% 30%,rgba(255,255,255,.55) 0 2px,transparent 3px),
+      linear-gradient(180deg,var(--water),var(--water2) 58%,#8ed0d0 100%);
+  }
+  .reef::before {
+    content:""; position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse at 15% 88%,#6e9e72 0 9%,transparent 10%),
+      radial-gradient(ellipse at 38% 91%,#4e8565 0 13%,transparent 14%),
+      radial-gradient(ellipse at 67% 91%,#6a9b6a 0 15%,transparent 16%),
+      radial-gradient(ellipse at 91% 90%,#4f7e60 0 12%,transparent 13%);
+    opacity:.85; pointer-events:none;
+  }
+  .reef-floor {
+    position:absolute; left:-5%; right:-5%; bottom:-8%;
+    height:24%; background:linear-gradient(#4f8668,#315c50);
+    border-radius:50% 50% 0 0 / 35% 35% 0 0;
+  }
+  .mpa-zone {
+    position:absolute; top:0; bottom:0; left:0;
+    background:rgba(8,127,91,.17);
+    border-right:2px dashed rgba(8,127,91,.65);
+    display:none; z-index:2; pointer-events:none;
+  }
+  .mpa-zone.active { display:block; }
+  .mpa-label {
+    position:absolute; top:10px; left:10px; z-index:4;
+    background:rgba(255,255,255,.9); color:#075f45; border:1px solid #b7ddcf;
+    padding:5px 8px; border-radius:8px; font-size:.72rem; font-weight:900;
+  }
+  .reef-label {
+    position:absolute; right:10px; top:10px; z-index:4;
+    background:rgba(255,255,255,.85); padding:5px 8px;
+    border-radius:8px; font-size:.72rem; color:#355761; font-weight:800;
+  }
+  .fish {
+    position:absolute; z-index:3; transform:translate(-50%,-50%);
+    user-select:none; transition:all .45s ease;
+    filter:drop-shadow(0 2px 1px rgba(0,0,0,.18));
+  }
+  .coral {
+    position:absolute; z-index:2; bottom:7%;
+    transform-origin:bottom center;
+    transition:opacity .5s ease, transform .5s ease;
+    font-size:2rem;
+    filter:drop-shadow(0 2px 1px rgba(0,0,0,.15));
+  }
+  .legend {
+    display:flex; flex-wrap:wrap; gap:10px; margin-top:9px;
+    font-size:.75rem; color:var(--muted);
+  }
+  .legend span { display:flex; align-items:center; gap:5px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .green-dot { background:#087f5b; }
+  .blue-dot { background:#0b7285; }
+  .history { margin-top:12px; }
+  canvas { width:100%; height:190px; display:block; }
+  .explain {
+    margin-top:12px; padding:12px; border-radius:12px;
+    background:#f5fafb; border:1px solid var(--line);
+    font-size:.83rem; line-height:1.5; color:#36545e;
+  }
+  .equation {
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:#eef7f8; padding:2px 5px; border-radius:5px;
+  }
+  .small { font-size:.73rem; color:var(--muted); }
+  @media (max-width:850px) {
+    .grid { grid-template-columns:1fr; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .reef { height:420px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🐟 Overfishing & Marine Protected Area Simulation</h1>
+  <p class="subtitle">
+    Explore how fishing pressure changes a fish population—and how a marine protected area (MPA)
+    can create a refuge, allow fish to accumulate, and produce spillover into fished waters.
+  </p>
+
+  <div class="grid">
+    <aside class="panel controls">
+      <h2>Simulation controls</h2>
+
+      <div id="mpaStatus" class="mpa-status off">
+        <strong>MPA is off.</strong><br>
+        All fish are currently exposed to fishing.
+      </div>
+
+      <div class="control">
+        <label>Fishing boats <span class="value" id="boatsVal">8</span></label>
+        <input id="boats" type="range" min="0" max="20" value="8">
+        <div class="hint">More boats increase total fishing effort.</div>
+      </div>
+
+      <div class="control">
+        <label>Catch per boat / year <span class="value" id="catchVal">50</span></label>
+        <input id="catchRate" type="range" min="0" max="100" value="50">
+        <div class="hint">Maximum fish removed by each boat each year.</div>
+      </div>
+
+      <div class="control">
+        <label>MPA size <span class="value" id="mpaSizeVal">30%</span></label>
+        <input id="mpaSize" type="range" min="10" max="80" value="30">
+        <div class="hint">Percent of the reef represented by the protected area.</div>
+      </div>
+
+      <div class="control">
+        <label>Years to run <span class="value" id="yearsVal">10</span></label>
+        <input id="years" type="range" min="1" max="30" value="10">
+      </div>
+
+      <div class="button-row">
+        <button class="primary" id="runBtn">▶ Run selected years</button>
+        <button class="green" id="oneBtn">+1 year</button>
+        <button class="warn" id="mpaBtn">Establish MPA</button>
+        <button class="reset" id="resetBtn">Reset</button>
+      </div>
+
+      <div class="explain">
+        <strong>Try this:</strong> Run several years with high fishing pressure.
+        Then establish an MPA and run the same number of years again. Watch where the fish
+        accumulate and how the total population changes.
+      </div>
+    </aside>
+
+    <main class="panel results">
+      <div class="stats">
+        <div class="stat">
+          <div class="k">TOTAL FISH</div>
+          <div class="v" id="totalStat">1,000</div>
+          <div class="s">current population</div>
+        </div>
+        <div class="stat">
+          <div class="k">INSIDE MPA</div>
+          <div class="v" id="insideStat">0</div>
+          <div class="s" id="insideSub">MPA off</div>
+        </div>
+        <div class="stat">
+          <div class="k">FISHED AREA</div>
+          <div class="v" id="outsideStat">1,000</div>
+          <div class="s">fish exposed to harvest</div>
+        </div>
+        <div class="stat">
+          <div class="k">YEAR</div>
+          <div class="v" id="yearStat">0</div>
+          <div class="s">simulation time</div>
+        </div>
+      </div>
+
+      <div class="reef" id="reef">
+        <div class="mpa-zone" id="mpaZone"></div>
+        <div class="mpa-label" id="mpaLabel" style="display:none">🛡️ MARINE PROTECTED AREA</div>
+        <div class="reef-label">🌊 REEF ECOSYSTEM</div>
+        <div class="reef-floor"></div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot green-dot"></i> Protected water</span>
+        <span><i class="dot blue-dot"></i> Fished water</span>
+        <span>🐟 Each fish icon represents a portion of the population</span>
+      </div>
+
+      <div class="history panel" style="padding:10px;margin-top:12px">
+        <strong style="font-size:.85rem">Population through time</strong>
+        <canvas id="chart" width="900" height="190"></canvas>
+      </div>
+
+      <div class="explain">
+        <strong>Model:</strong> Fish populations grow according to a simplified logistic
+        growth model. Fishing removes fish from the fished area only. When the MPA is active,
+        fish inside it are protected from harvest; a small amount of movement between protected
+        and fished waters represents spillover and migration.
+        <br><br>
+        <span class="small">
+          This is a pedagogical model rather than a calibrated representation of a specific fishery.
+          The numerical parameters are intentionally simplified so students can see population,
+          carrying-capacity, fishing, refuge, and spillover dynamics.
+        </span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  const INITIAL = 1000;
+  const K = 1000;
+
+  let state = {
+    year: 0,
+    inside: 0,
+    outside: INITIAL,
+    mpa: false,
+    history: [{year:0, total:INITIAL, inside:0, outside:INITIAL}]
+  };
+
+  const $ = id => document.getElementById(id);
+  const boats = $("boats");
+  const catchRate = $("catchRate");
+  const mpaSize = $("mpaSize");
+  const years = $("years");
+
+  function fmt(n) {
+    return Math.round(n).toLocaleString();
+  }
+
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  function params() {
+    return {
+      boats: +boats.value,
+      catchRate: +catchRate.value,
+      mpaSize: +mpaSize.value,
+      years: +years.value
+    };
+  }
+
+  function updateLabels() {
+    $("boatsVal").textContent = boats.value;
+    $("catchVal").textContent = catchRate.value;
+    $("mpaSizeVal").textContent = mpaSize.value + "%";
+    $("yearsVal").textContent = years.value;
+  }
+
+  function establishOrRemoveMPA() {
+    if (!state.mpa) {
+      const p = +mpaSize.value / 100;
+      const total = state.inside + state.outside;
+      state.inside = total * p;
+      state.outside = total * (1 - p);
+      state.mpa = true;
+    } else {
+      state.outside += state.inside;
+      state.inside = 0;
+      state.mpa = false;
+    }
+    render();
+  }
+
+  function step() {
+    const p = params();
+
+    if (!state.mpa) {
+      // No MPA: all fish experience growth and fishing.
+      const total = state.outside;
+      const growth = 0.50 * total * (1 - total / K);
+      const harvest = Math.min(Math.max(0, total), p.boats * p.catchRate);
+      state.outside = clamp(total + growth - harvest, 0, K);
+    } else {
+      // MPA: protected and fished compartments have separate carrying capacities.
+      const protectedFraction = p.mpaSize / 100;
+      const protectedK = Math.max(1, K * protectedFraction * 1.25);
+      const outsideK = Math.max(1, K * (1 - protectedFraction));
+
+      const growthIn = 0.42 * state.inside * (1 - state.inside / protectedK);
+      const growthOut = 0.50 * state.outside * (1 - state.outside / outsideK);
+
+      // Symmetric movement creates spillover while keeping the protected refuge visible.
+      const moveOut = state.outside * 0.035;
+      const moveIn = state.inside * 0.035;
+
+      const harvest = Math.min(
+        Math.max(0, state.outside),
+        p.boats * p.catchRate
+      );
+
+      state.inside = clamp(
+        state.inside + growthIn + moveIn - moveOut,
+        0,
+        protectedK
+      );
+
+      state.outside = clamp(
+        state.outside + growthOut + moveOut - moveIn - harvest,
+        0,
+        outsideK
+      );
+    }
+
+    state.year += 1;
+    state.history.push({
+      year: state.year,
+      total: state.inside + state.outside,
+      inside: state.inside,
+      outside: state.outside
+    });
+  }
+
+  function run(n) {
+    for (let i = 0; i < n; i++) step();
+    render();
+  }
+
+  function reset() {
+    state = {
+      year:0,
+      inside:0,
+      outside:INITIAL,
+      mpa:false,
+      history:[{year:0,total:INITIAL,inside:0,outside:INITIAL}]
+    };
+    render();
+  }
+
+  function renderStatus() {
+    const box = $("mpaStatus");
+    const button = $("mpaBtn");
+
+    if (state.mpa) {
+      box.className = "mpa-status";
+      box.innerHTML =
+        "<strong>🛡️ MPA is active.</strong><br>" +
+        Math.round(mpaSize.value) + "% of the reef is protected from harvest.";
+      button.textContent = "Remove MPA";
+      button.className = "warn";
+    } else {
+      box.className = "mpa-status off";
+      box.innerHTML =
+        "<strong>MPA is off.</strong><br>All fish are currently exposed to fishing.";
+      button.textContent = "Establish MPA";
+      button.className = "green";
+    }
+  }
+
+  function renderStats() {
+    const total = state.inside + state.outside;
+    $("totalStat").textContent = fmt(total);
+    $("insideStat").textContent = fmt(state.inside);
+    $("outsideStat").textContent = fmt(state.outside);
+    $("yearStat").textContent = state.year;
+
+    $("insideSub").textContent = state.mpa
+      ? Math.round((state.inside / Math.max(1,total))*100) + "% of total"
+      : "MPA off";
+  }
+
+  function seededRandom(seed) {
+    let x = Math.sin(seed * 999.123) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  function renderReef() {
+    const reef = $("reef");
+    reef.querySelectorAll(".fish,.coral").forEach(e => e.remove());
+
+    const zone = $("mpaZone");
+    const label = $("mpaLabel");
+
+    if (state.mpa) {
+      const p = +mpaSize.value;
+      zone.classList.add("active");
+      zone.style.width = p + "%";
+      label.style.display = "block";
+    } else {
+      zone.classList.remove("active");
+      label.style.display = "none";
+    }
+
+    const total = state.inside + state.outside;
+    const health = clamp(total / INITIAL, 0, 1);
+
+    // Coral becomes more abundant as the ecosystem retains more fish.
+    const coralCount = 11;
+    for (let i=0; i<coralCount; i++) {
+      const c = document.createElement("div");
+      c.className = "coral";
+      c.textContent = ["🪸","🌿","🪸","🌱"][i % 4];
+      c.style.left = (5 + seededRandom(i+44)*90) + "%";
+      c.style.fontSize = (1.3 + seededRandom(i+91)*1.5) + "rem";
+      c.style.opacity = (.22 + .72*health).toFixed(2);
+      c.style.transform = "scale(" + (.55 + .65*health) + ")";
+      reef.appendChild(c);
+    }
+
+    // Number of icons is deliberately capped for performance/readability.
+    const maxFishIcons = 90;
+    const density = clamp(total / INITIAL, 0.02, 1);
+    const iconCount = Math.max(3, Math.round(maxFishIcons * density));
+
+    let inIcons = 0;
+    if (state.mpa && total > 0) {
+      inIcons = Math.round(iconCount * (state.inside / total));
+    }
+    const outIcons = iconCount - inIcons;
+
+    const addFish = (inside, idx) => {
+      const f = document.createElement("div");
+      f.className = "fish";
+      f.textContent = ["🐟","🐠","🐡"][idx % 3];
+
+      let x, y;
+      if (inside && state.mpa) {
+        x = 5 + seededRandom(idx*3+17) * (Math.max(10,+mpaSize.value)-7);
+        y = 16 + seededRandom(idx*3+18) * 66;
+      } else {
+        const left = state.mpa ? +mpaSize.value + 3 : 3;
+        x = left + seededRandom(idx*3+19) * (97-left);
+        y = 16 + seededRandom(idx*3+20) * 66;
+      }
+
+      const pool = inside ? state.inside : state.outside;
+      const poolK = inside && state.mpa
+        ? Math.max(1, K*(+mpaSize.value/100)*1.25)
+        : Math.max(1, K*(1-(state.mpa ? +mpaSize.value/100 : 0)));
+
+      const size = inside
+        ? 17 + 18*clamp(pool/poolK,0,1)
+        : 14 + 16*clamp(pool/poolK,0,1);
+
+      f.style.left = x + "%";
+      f.style.top = y + "%";
+      f.style.fontSize = size + "px";
+      f.title = inside ? "Fish inside MPA" : "Fish in fished area";
+      reef.appendChild(f);
+    };
+
+    for (let i=0; i<inIcons; i++) addFish(true, i+1);
+    for (let i=0; i<outIcons; i++) addFish(false, i+101);
+  }
+
+  function drawChart() {
+    const canvas = $("chart");
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(500, Math.round(rect.width));
+    const h = 190;
+
+    canvas.width = w*dpr;
+    canvas.height = h*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    ctx.clearRect(0,0,w,h);
+
+    const pad = {l:42,r:12,t:16,b:28};
+    const pw = w-pad.l-pad.r;
+    const ph = h-pad.t-pad.b;
+
+    const hist = state.history;
+    const maxY = Math.max(K, ...hist.map(d=>d.total), 10);
+
+    ctx.strokeStyle = "#dbe7ea";
+    ctx.lineWidth = 1;
+
+    for (let i=0;i<=4;i++) {
+      const y = pad.t + ph*(i/4);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+      ctx.fillStyle = "#64808a";
+      ctx.font = "11px system-ui";
+      ctx.fillText(fmt(maxY*(1-i/4)), 4, y+4);
+    }
+
+    const x = i => pad.l + (hist.length <= 1 ? 0 : pw*i/(hist.length-1));
+    const y = v => pad.t + ph*(1-v/maxY);
+
+    function line(field, dash, width) {
+      ctx.beginPath();
+      ctx.setLineDash(dash);
+      ctx.lineWidth = width;
+      hist.forEach((d,i) => {
+        const px=x(i), py=y(d[field]);
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Default canvas colors are intentionally simple and readable.
+    ctx.strokeStyle = "#0b7285";
+    line("total", [], 3);
+
+    if (state.mpa) {
+      ctx.strokeStyle = "#087f5b";
+      line("inside", [5,4], 2.5);
+      ctx.strokeStyle = "#e67700";
+      line("outside", [2,3], 2);
+    }
+
+    ctx.fillStyle = "#55717d";
+    ctx.font = "11px system-ui";
+    const last = hist[hist.length-1];
+    ctx.fillText("Year " + hist[0].year, pad.l, h-7);
+    ctx.fillText("Year " + last.year, w-pad.r-45, h-7);
+
+    ctx.fillStyle = "#0b7285";
+    ctx.fillText("Total", pad.l+5, 12);
+    if(state.mpa){
+      ctx.fillStyle = "#087f5b";
+      ctx.fillText("Inside MPA", pad.l+55, 12);
+      ctx.fillStyle = "#e67700";
+      ctx.fillText("Fished", pad.l+125, 12);
+    }
+  }
+
+  function render() {
+    updateLabels();
+    renderStatus();
+    renderStats();
+    renderReef();
+    drawChart();
+  }
+
+  [boats,catchRate,mpaSize,years].forEach(el => {
+    el.addEventListener("input", () => {
+      updateLabels();
+      if (el === mpaSize && state.mpa) {
+        // Changing MPA size while active changes the visual boundary but does not
+        // retroactively teleport fish; students can establish a new MPA after reset.
+        renderStatus();
+        renderReef();
+        drawChart();
+      }
+    });
+  });
+
+  $("runBtn").addEventListener("click", () => run(+years.value));
+  $("oneBtn").addEventListener("click", () => run(1));
+  $("resetBtn").addEventListener("click", reset);
+  $("mpaBtn").addEventListener("click", establishOrRemoveMPA);
+  window.addEventListener("resize", drawChart);
+
+  render();
+})();
+</script>
+</body>
+</html>
